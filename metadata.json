@@ -1,0 +1,7 @@
+{
+  "name": "iGestão Pro - ERP Varejo & Assistência",
+  "description": "Sistema de gestão completo para lojas de iPhone e assistência técnica, com controle de estoque serializado, OS e inteligência financeira.",
+  "requestFramePermissions": [
+    "camera"
+  ]
+}
