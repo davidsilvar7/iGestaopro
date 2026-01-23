@@ -1,3 +1,8 @@
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
+
+:root {
+  --jphone-blue: #0093E9; /* JPhone Branding Blue */
+  --jphone-dark: #1e293b;
+}

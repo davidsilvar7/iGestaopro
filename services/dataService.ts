@@ -1,6 +1,6 @@
 
 import { supabase } from './supabase';
-import { InventoryItem, Transaction, ServiceOrder } from '../types';
+import { InventoryItem, Transaction, ServiceOrder, Expense, Campaign, CampaignTarget, Customer } from '../types';
 
 // --- ADAPTERS (CamelCase <-> SnakeCase) ---
 
@@ -52,8 +52,6 @@ const fromDbTransaction = (dbItem: any): Transaction => ({
 });
 
 const toDbTransaction = (trx: Partial<Transaction>) => {
-    // For JSONB items, we might want to store them as is or mapped. 
-    // Assuming we store a snapshot of the item state.
     const payload: any = {};
     if (trx.type !== undefined) payload.type = trx.type;
     if (trx.date !== undefined) payload.date = trx.date;
@@ -173,7 +171,6 @@ export const createTransaction = async (transaction: Omit<Transaction, 'id'>): P
         console.error('Error creating transaction:', error);
         return null;
     }
-    // Note: The items JSONB comes back as is, we map it back
     return fromDbTransaction(data);
 };
 
@@ -187,24 +184,9 @@ export const processSale = async (transaction: Omit<Transaction, 'id'>, itemsToD
     }
 
     // 2. Update Inventory Quantities
-    // Note: Ideally this would be a Supabase Database Function (RPC) for atomicity.
-    // implementing client-side loop for MVP.
     const updates = itemsToDeduct.map(async (item) => {
-        if (item.id.startsWith('temp-')) return; // Skip temporary items (quick adds) that aren't in DB
+        if (item.id.startsWith('temp-')) return;
 
-        // Fetch current to ensure valid deduction? Or just decrement?
-        // Simple decrement for now.
-        const currentQty = item.quantity;
-        const newQty = Math.max(0, currentQty - 1); // Assuming 1 unit sold per line item in cart for simplicity, OR need to check cart logic.
-
-        // CORRECTION: Cart logic in SalesPOS might have duplicates or quantity field? 
-        // In SalesPOS, addToCart adds a new line item. So each item in cart is 1 unit.
-        // We need to fetch the *current* DB quantity (source of truth) and decrement it.
-        // But since we don't want to re-fetch everything, we can decrement from the snapshot we have IF we trust it, 
-        // OR better: call an RPC. Since we don't have RPC, we will read-modify-write or just decrement blindly if we knew the total.
-
-        // Better approach for MVP without RPC:
-        // Get the specific item from DB to know real current stock, then update.
         const { data: currentDbItem } = await supabase.from('inventory').select('quantity').eq('id', item.id).single();
 
         if (currentDbItem) {
@@ -263,4 +245,152 @@ export const updateServiceOrder = async (id: string, updates: Partial<ServiceOrd
         return null;
     }
     return fromDbServiceOrder(data);
+};
+
+// --- Expenses Operations ---
+
+const fromDbExpense = (dbItem: any): Expense => ({
+    id: dbItem.id,
+    description: dbItem.description,
+    amount: Number(dbItem.amount),
+    category: dbItem.category,
+    date: dbItem.date
+});
+
+const toDbExpense = (expense: Partial<Expense>) => {
+    const payload: any = {};
+    if (expense.description !== undefined) payload.description = expense.description;
+    if (expense.amount !== undefined) payload.amount = expense.amount;
+    if (expense.category !== undefined) payload.category = expense.category;
+    if (expense.date !== undefined) payload.date = expense.date;
+    return payload;
+};
+
+export const fetchExpenses = async (): Promise<Expense[]> => {
+    const { data, error } = await supabase
+        .from('expenses')
+        .select('*')
+        .order('date', { ascending: false });
+
+    if (error) {
+        console.error('Error fetching expenses:', error);
+        return [];
+    }
+    return data.map(fromDbExpense);
+};
+
+export const createExpense = async (expense: Omit<Expense, 'id'>): Promise<Expense | null> => {
+    const payload = toDbExpense(expense);
+    const { data, error } = await supabase
+        .from('expenses')
+        .insert([payload])
+        .select()
+        .single();
+
+    if (error) {
+        console.error('Error creating expense:', error);
+        return null;
+    }
+    return fromDbExpense(data);
+};
+
+export const deleteExpense = async (id: string): Promise<boolean> => {
+    const { error } = await supabase
+        .from('expenses')
+        .delete()
+        .eq('id', id);
+
+    if (error) {
+        console.error('Error deleting expense:', error);
+        return false;
+    }
+    return true;
+};
+
+// --- Marketing Operations ---
+
+export const createCampaign = async (name: string, template: string, filters: any, customers: Customer[]): Promise<string | null> => {
+    // 1. Create Campaign Header
+    const { data: campaign, error } = await supabase
+        .from('campaigns')
+        .insert([{
+            name,
+            message_template: template,
+            filters,
+            status: 'ACTIVE'
+        }])
+        .select()
+        .single();
+
+    if (error) {
+        console.error("Error creating campaign:", error);
+        return null;
+    }
+
+    // 2. Create Targets
+    const targets = customers.map(c => ({
+        campaign_id: campaign.id,
+        customer_id: c.id,
+        status: 'PENDING'
+    }));
+
+    const { error: targetsError } = await supabase
+        .from('campaign_targets')
+        .insert(targets);
+
+    if (targetsError) {
+        console.error("Error adding targets:", targetsError);
+    }
+
+    return campaign.id;
+};
+
+export const fetchCampaigns = async (): Promise<Campaign[]> => {
+    const { data, error } = await supabase
+        .from('campaigns')
+        .select('*')
+        .order('created_at', { ascending: false });
+
+    if (error) {
+        console.error(error);
+        return [];
+    }
+
+    return data.map((c: any) => ({
+        id: c.id,
+        name: c.name,
+        messageTemplate: c.message_template,
+        filters: c.filters,
+        status: c.status,
+        createdAt: c.created_at
+    }));
+};
+
+export const fetchCampaignTargets = async (campaignId: string): Promise<CampaignTarget[]> => {
+    const { data, error } = await supabase
+        .from('campaign_targets')
+        .select(`
+            *,
+            customers (name, phone)
+        `)
+        .eq('campaign_id', campaignId);
+
+    if (error) {
+        console.error(error);
+        return [];
+    }
+
+    return data.map((t: any) => ({
+        id: t.id,
+        campaignId: t.campaign_id,
+        customerId: t.customer_id,
+        status: t.status,
+        sentAt: t.sent_at,
+        customerName: t.customers?.name,
+        customerPhone: t.customers?.phone
+    }));
+};
+
+export const markTargetAsSent = async (targetId: string) => {
+    await supabase.from('campaign_targets').update({ status: 'SENT', sent_at: new Date() }).eq('id', targetId);
 };

@@ -11,6 +11,10 @@ import Reports from './pages/Reports';
 import Settings from './pages/Settings';
 import Help from './pages/Help';
 import Login from './pages/Login';
+import CrmDashboard from './pages/CRM/CrmDashboard';
+import LeadPipeline from './pages/CRM/LeadPipeline';
+import CustomerList from './pages/CRM/CustomerList';
+import Marketing from './pages/Marketing';
 import { Menu, Loader2 } from 'lucide-react';
 
 const App: React.FC = () => {
@@ -60,6 +64,13 @@ const App: React.FC = () => {
       case 'sales': return <SalesPOS />;
       case 'financial': return <Financial />;
       case 'reports': return <Reports />;
+
+      // CRM Routes
+      case 'crm_dashboard': return <CrmDashboard />;
+      case 'crm_leads': return <LeadPipeline />;
+      case 'crm_customers': return <CustomerList />;
+      case 'marketing': return <Marketing />;
+
       case 'settings': return <Settings />;
       case 'help': return <Help />;
       default: return <Dashboard />;

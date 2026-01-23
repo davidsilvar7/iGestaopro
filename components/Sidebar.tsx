@@ -1,6 +1,6 @@
 import React from 'react';
 import { supabase } from '../services/supabase';
-import { LayoutDashboard, Smartphone, Wrench, DollarSign, Menu, X, LogOut, PieChart, TrendingUp, Settings, HelpCircle } from 'lucide-react';
+import { LayoutDashboard, Smartphone, Wrench, DollarSign, Menu, X, LogOut, PieChart, TrendingUp, Settings, HelpCircle, Target, UserPlus, Users } from 'lucide-react';
 import { Session } from '@supabase/supabase-js';
 
 interface SidebarProps {
@@ -38,12 +38,14 @@ const Sidebar: React.FC<SidebarProps> = ({ activeTab, setActiveTab, isOpen, setI
         {/* Header */}
         <div className="flex items-center justify-between h-20 px-6 bg-slate-950/50 border-b border-white/5">
           <div className="flex items-center">
-            <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-blue-500 to-purple-600 flex items-center justify-center mr-3 shadow-lg shadow-blue-500/20">
-              <Smartphone size={18} className="text-white" />
+            {/* Logo Image */}
+            {/* Logo Image */}
+            <div className="h-10 w-10 bg-gradient-to-tr from-blue-600 to-purple-600 rounded-lg flex items-center justify-center shadow-lg shadow-blue-900/50 mr-3">
+              <Smartphone className="text-white" size={24} />
             </div>
             <div>
-              <span className="text-lg font-bold tracking-tight block leading-none">iGestão<span className="text-blue-400">Pro</span></span>
-              <span className="text-[10px] text-slate-500 uppercase tracking-widest">Loja Principal</span>
+              <span className="text-lg font-bold tracking-tight block leading-none text-white">iGestão<span className="text-blue-400">Pro</span></span>
+              <span className="text-[10px] text-slate-400 uppercase tracking-widest">Loja Principal</span>
             </div>
           </div>
           <button onClick={() => setIsOpen(false)} className="lg:hidden text-slate-400 hover:text-white">
@@ -74,14 +76,43 @@ const Sidebar: React.FC<SidebarProps> = ({ activeTab, setActiveTab, isOpen, setI
                 {isActive && <div className="ml-auto w-1.5 h-1.5 rounded-full bg-white animate-pulse" />}
               </button>
             );
+
+          })}
+
+          <p className="px-4 text-xs font-bold text-slate-500 uppercase tracking-wider mb-2 mt-6">CRM (Clientes)</p>
+          {[
+            { id: 'crm_dashboard', label: 'Visão Geral', icon: Target },
+            { id: 'crm_leads', label: 'Leads & Pipeline', icon: UserPlus },
+            { id: 'crm_customers', label: 'Carteira de Clientes', icon: Users },
+            { id: 'marketing', label: 'Marketing & Disparos', icon: Smartphone },
+          ].map((item) => {
+            const Icon = item.icon;
+            const isActive = activeTab === item.id;
+            return (
+              <button
+                key={item.id}
+                onClick={() => {
+                  setActiveTab(item.id);
+                  setIsOpen(false);
+                }}
+                className={`flex items-center w-full px-4 py-3 rounded-xl transition-all duration-200 group ${isActive
+                  ? 'bg-gradient-to-r from-blue-600 to-blue-700 text-white shadow-lg shadow-blue-900/40 translate-x-1'
+                  : 'text-slate-400 hover:bg-white/5 hover:text-white hover:translate-x-1'
+                  }`}
+              >
+                <Icon size={20} className={`mr-3 ${isActive ? 'text-white' : 'text-slate-500 group-hover:text-blue-400'} transition-colors`} />
+                <span className="font-medium text-sm">{item.label}</span>
+                {isActive && <div className="ml-auto w-1.5 h-1.5 rounded-full bg-white animate-pulse" />}
+              </button>
+            );
           })}
 
           <p className="px-4 text-xs font-bold text-slate-500 uppercase tracking-wider mb-2 mt-6">Sistema</p>
           <button
             onClick={() => { setActiveTab('settings'); setIsOpen(false); }}
             className={`flex items-center w-full px-4 py-3 rounded-xl transition-all ${activeTab === 'settings'
-                ? 'bg-gradient-to-r from-blue-600 to-blue-700 text-white shadow-lg shadow-blue-900/40 translate-x-1'
-                : 'text-slate-400 hover:bg-white/5 hover:text-white hover:translate-x-1'
+              ? 'bg-gradient-to-r from-blue-600 to-blue-700 text-white shadow-lg shadow-blue-900/40 translate-x-1'
+              : 'text-slate-400 hover:bg-white/5 hover:text-white hover:translate-x-1'
               }`}
           >
             <Settings size={20} className={`mr-3 ${activeTab === 'settings' ? 'text-white' : 'text-slate-500 group-hover:text-blue-400'}`} />
@@ -90,8 +121,8 @@ const Sidebar: React.FC<SidebarProps> = ({ activeTab, setActiveTab, isOpen, setI
           <button
             onClick={() => { setActiveTab('help'); setIsOpen(false); }}
             className={`flex items-center w-full px-4 py-3 rounded-xl transition-all ${activeTab === 'help'
-                ? 'bg-gradient-to-r from-blue-600 to-blue-700 text-white shadow-lg shadow-blue-900/40 translate-x-1'
-                : 'text-slate-400 hover:bg-white/5 hover:text-white hover:translate-x-1'
+              ? 'bg-gradient-to-r from-blue-600 to-blue-700 text-white shadow-lg shadow-blue-900/40 translate-x-1'
+              : 'text-slate-400 hover:bg-white/5 hover:text-white hover:translate-x-1'
               }`}
           >
             <HelpCircle size={20} className={`mr-3 ${activeTab === 'help' ? 'text-white' : 'text-slate-500 group-hover:text-blue-400'}`} />

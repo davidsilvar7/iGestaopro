@@ -25,22 +25,22 @@ export interface InventoryItem {
   category: ItemCategory;
   name: string; // Ex: iPhone 13 Pro 128GB ou Redmi Note 13
   sku: string;
-  
+
   // Precificação (Coração do Sistema)
   costPrice: number;
   sellPrice: number;
-  
+
   // Campos calculados em tempo real na UI, mas úteis aqui se persistidos
   quantity: number; // Menos relevante, mas mantido para controle básico
   minStockLevel?: number;
-  
+
   // Específicos de Aparelhos
   storage?: string; // 64GB, 128GB...
   color?: string;
   condition?: DeviceCondition;
   imei?: string;
   observation?: string; // Campo livre (Fornecedor, Troca, etc)
-  
+
   // Específicos de Serviços
   serviceType?: 'PREMIUM' | 'PARALELA' | 'OUTROS'; // Qualidade da peça
   serviceSubtype?: ServiceSubtype; // Categoria do serviço (Tela/Bateria)
@@ -74,3 +74,69 @@ export interface ServiceOrder {
   total: number;
   checklist?: { [key: string]: boolean };
 }
+
+export interface Expense {
+  id: string;
+  description: string;
+  amount: number;
+  category: string; // 'Aluguel', 'Energia', 'Internet', 'Pessoal', 'Outros'
+  date: string;
+}
+
+
+// CRM Types
+
+export type LifecycleStage = 'LEAD' | 'CLIENT';
+export type LeadStatus = 'NEW' | 'CONTACTED' | 'VISIT' | 'NEGOTIATION' | 'WON' | 'LOST';
+
+export interface Customer {
+  id: string;
+  name: string;
+  phone: string;
+  email?: string;
+  cpf?: string;
+  address?: string;
+  lifecycleStage: LifecycleStage;
+  status: LeadStatus;
+  source?: string; // Instagram, Google, Indication
+  deviceOwned?: string; // Current device
+  interest?: string; // Device they want to buy
+  opportunityValue?: number; // Potential Deal Value
+  nextAction?: string; // Next step/task (e.g. Call tomorrow)
+  notes?: string;
+  createdAt: string;
+  updatedAt: string;
+}
+// Marketing Types
+export interface Campaign {
+  id: string;
+  name: string;
+  messageTemplate: string;
+  filters: {
+    deviceName?: string;
+    lifecycleStage?: string;
+    status?: string;
+  };
+  status: 'DRAFT' | 'ACTIVE' | 'COMPLETED';
+  createdAt: string;
+}
+
+export interface CampaignTarget {
+  id: string;
+  campaignId: string;
+  customerId: string;
+  status: 'PENDING' | 'SENT' | 'FAILED';
+  sentAt?: string;
+  customerName?: string; // Join helper
+  customerPhone?: string; // Join helper
+}
+
+export interface Interaction {
+  id: string;
+  customerId: string;
+  type: 'WHATSAPP' | 'CALL' | 'VISIT' | 'EMAIL' | 'OTHER';
+  notes: string;
+  date: string;
+  createdBy?: string;
+}
+

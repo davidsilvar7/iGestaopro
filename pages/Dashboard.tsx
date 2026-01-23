@@ -1,9 +1,11 @@
 import React, { useState, useMemo, useEffect } from 'react';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell } from 'recharts';
-import { TrendingUp, Smartphone, BrainCircuit, Wrench, Zap } from 'lucide-react';
+import { TrendingUp, Smartphone, BrainCircuit, Wrench, Zap, Calendar } from 'lucide-react';
 import { fetchTransactions, fetchInventory } from '../services/dataService';
 import { analyzeBusinessHealth } from '../services/geminiService';
 import { ItemCategory, InventoryItem, Transaction } from '../types';
+
+type DateFilter = 'today' | '7days' | '30days' | 'thisMonth' | 'all';
 
 const Dashboard: React.FC = () => {
   const [transactions, setTransactions] = useState<Transaction[]>([]);
@@ -11,6 +13,7 @@ const Dashboard: React.FC = () => {
   const [loading, setLoading] = useState(true);
   const [analysis, setAnalysis] = useState<string>('');
   const [loadingAi, setLoadingAi] = useState(false);
+  const [dateFilter, setDateFilter] = useState<DateFilter>('30days');
 
   useEffect(() => {
     const loadData = async () => {
@@ -25,6 +28,28 @@ const Dashboard: React.FC = () => {
     loadData();
   }, []);
 
+  const filteredTransactions = useMemo(() => {
+    const now = new Date();
+    const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
+
+    return transactions.filter(t => {
+      const tDate = new Date(t.date).getTime();
+      switch (dateFilter) {
+        case 'today':
+          return tDate >= todayStart;
+        case '7days':
+          return tDate >= now.getTime() - (7 * 24 * 60 * 60 * 1000);
+        case '30days':
+          return tDate >= now.getTime() - (30 * 24 * 60 * 60 * 1000);
+        case 'thisMonth':
+          return new Date(t.date).getMonth() === now.getMonth() && new Date(t.date).getFullYear() === now.getFullYear();
+        case 'all':
+        default:
+          return true;
+      }
+    });
+  }, [transactions, dateFilter]);
+
   // --- CÁLCULOS REAIS ---
   const kpiData = useMemo(() => {
     let totalRevenue = 0;
@@ -33,7 +58,7 @@ const Dashboard: React.FC = () => {
     let iPhoneSalesCount = 0;
     let iPhoneRevenue = 0;
 
-    transactions.forEach(t => {
+    filteredTransactions.forEach(t => {
       totalRevenue += t.totalAmount;
       totalProfit += t.totalProfit;
 
@@ -51,10 +76,9 @@ const Dashboard: React.FC = () => {
 
     const averageTicketIphone = iPhoneSalesCount > 0 ? iPhoneRevenue / iPhoneSalesCount : 0;
     const globalMargin = totalRevenue > 0 ? (totalProfit / totalRevenue) * 100 : 0;
-    const serviceMargin = servicesProfit > 0 ? (servicesProfit / totalRevenue) * 100 : 0; // Simplified
 
     return { totalRevenue, totalProfit, averageTicketIphone, servicesProfit, globalMargin };
-  }, [transactions]);
+  }, [filteredTransactions]);
 
   // Gráfico de Pizza: Lucro por Categoria
   const profitByCategory = useMemo(() => {
@@ -66,7 +90,7 @@ const Dashboard: React.FC = () => {
       [ItemCategory.ACCESSORY]: 0,
     };
 
-    transactions.forEach(t => {
+    filteredTransactions.forEach(t => {
       t.items.forEach(item => {
         const profit = item.sellPrice - item.costPrice;
         if (data[item.category] !== undefined) {
@@ -77,52 +101,94 @@ const Dashboard: React.FC = () => {
 
     const formattedData = [
       { name: 'iPhones', value: data[ItemCategory.IPHONE] },
-      { name: 'Androids', value: data[ItemCategory.ANDROID] + data[ItemCategory.ANDROID_USED] }, // Agrupando novos e usados para simplificar visual
+      { name: 'Androids', value: data[ItemCategory.ANDROID] + data[ItemCategory.ANDROID_USED] },
       { name: 'Serviços', value: data[ItemCategory.SERVICE] },
       { name: 'Acessórios', value: data[ItemCategory.ACCESSORY] },
     ].filter(d => d.value > 0);
 
     return formattedData.length > 0 ? formattedData : [{ name: 'Sem dados', value: 1 }];
-  }, []);
+  }, [filteredTransactions]);
 
-  // Gráfico de Barras: Vendas (Simulado dias da semana ou vazio se não tiver dados)
+  // Gráfico de Barras: Vendas (Timeline Real)
   const revenueData = useMemo(() => {
-    if (transactions.length === 0) {
-      return [
-        { name: 'Seg', val: 0 }, { name: 'Ter', val: 0 }, { name: 'Qua', val: 0 },
-        { name: 'Qui', val: 0 }, { name: 'Sex', val: 0 }, { name: 'Sab', val: 0 }
-      ];
-    }
-    // Em um app real, agruparia por data. Aqui retornamos vazio pois zeramos o banco.
-    return [
-      { name: 'Atual', val: kpiData.totalRevenue }
-    ];
-  }, [kpiData]);
+    if (filteredTransactions.length === 0) return [];
 
-  const COLORS = ['#3730a3', '#16a34a', '#2563eb', '#eab308', '#cbd5e1']; // Indigo, Green, Blue, Yellow, Slate (Empty)
+    // 1. Group by Date (DD/MM)
+    const grouped: Record<string, number> = {};
+    const dates = new Set<string>();
+
+    // Fill helpful timeline if filtered
+    const now = new Date();
+    const daysToShow = dateFilter === '7days' ? 7 : dateFilter === '30days' ? 30 : 0;
+
+    if (daysToShow > 0) {
+      for (let i = daysToShow - 1; i >= 0; i--) {
+        const d = new Date(now.getTime() - (i * 24 * 60 * 60 * 1000));
+        const key = d.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' });
+        grouped[key] = 0;
+      }
+    }
+
+    filteredTransactions.forEach(t => {
+      const key = new Date(t.date).toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' });
+      grouped[key] = (grouped[key] || 0) + t.totalAmount;
+    });
+
+    return Object.entries(grouped).map(([name, val]) => ({ name, val }));
+  }, [filteredTransactions, dateFilter]);
+
+  const COLORS = ['#3730a3', '#16a34a', '#2563eb', '#eab308', '#cbd5e1'];
 
   const handleAiAnalysis = async () => {
     setLoadingAi(true);
-    const result = await analyzeBusinessHealth(transactions, inventory);
+    const result = await analyzeBusinessHealth(filteredTransactions, inventory);
     setAnalysis(result);
     setLoadingAi(false);
   };
 
+  const getFilterLabel = () => {
+    switch (dateFilter) {
+      case 'today': return 'Hoje';
+      case '7days': return 'Últimos 7 dias';
+      case '30days': return 'Últimos 30 dias';
+      case 'thisMonth': return 'Este Mês';
+      case 'all': return 'Todo o Período';
+    }
+  };
+
   return (
     <div className="p-6 space-y-6 bg-slate-50 min-h-screen">
-      <div className="flex justify-between items-center">
+      <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
         <div>
           <h1 className="text-2xl font-bold text-slate-800">Painel de Lucratividade</h1>
           <p className="text-slate-500">Visão estratégica de margens e vendas</p>
         </div>
-        <button
-          onClick={handleAiAnalysis}
-          disabled={loadingAi}
-          className="flex items-center px-4 py-2 bg-gradient-to-r from-indigo-600 to-purple-600 text-white rounded-lg shadow-md hover:from-indigo-700 hover:to-purple-700 transition-all disabled:opacity-70"
-        >
-          <BrainCircuit size={20} className="mr-2" />
-          {loadingAi ? 'Gerando Insights...' : 'IA Business Insight'}
-        </button>
+
+        <div className="flex items-center gap-3">
+          {/* Date Filter Dropdown */}
+          <div className="relative group">
+            <button className="flex items-center px-4 py-2 bg-white border border-slate-200 rounded-lg text-slate-700 hover:bg-slate-50 transition-colors shadow-sm font-medium text-sm">
+              <Calendar size={16} className="mr-2 text-slate-500" />
+              {getFilterLabel()}
+            </button>
+            <div className="absolute right-0 mt-2 w-48 bg-white rounded-xl shadow-xl border border-slate-100 hidden group-hover:block z-20 overflow-hidden">
+              <button onClick={() => setDateFilter('today')} className="w-full text-left px-4 py-2 hover:bg-slate-50 text-sm text-slate-700">Hoje</button>
+              <button onClick={() => setDateFilter('7days')} className="w-full text-left px-4 py-2 hover:bg-slate-50 text-sm text-slate-700">Últimos 7 dias</button>
+              <button onClick={() => setDateFilter('30days')} className="w-full text-left px-4 py-2 hover:bg-slate-50 text-sm text-slate-700">Últimos 30 dias</button>
+              <button onClick={() => setDateFilter('thisMonth')} className="w-full text-left px-4 py-2 hover:bg-slate-50 text-sm text-slate-700">Este Mês</button>
+              <button onClick={() => setDateFilter('all')} className="w-full text-left px-4 py-2 hover:bg-slate-50 text-sm text-slate-700">Todo o Período</button>
+            </div>
+          </div>
+
+          <button
+            onClick={handleAiAnalysis}
+            disabled={loadingAi}
+            className="flex items-center px-4 py-2 bg-gradient-to-r from-indigo-600 to-purple-600 text-white rounded-lg shadow-md hover:from-indigo-700 hover:to-purple-700 transition-all disabled:opacity-70 text-sm font-medium"
+          >
+            <BrainCircuit size={18} className="mr-2" />
+            {loadingAi ? 'Analisando...' : 'IA Insight'}
+          </button>
+        </div>
       </div>
 
       {analysis && (
@@ -147,7 +213,7 @@ const Dashboard: React.FC = () => {
                 R$ {kpiData.totalRevenue.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
               </h3>
               <span className="text-xs text-slate-400 flex items-center mt-1">
-                <TrendingUp size={12} className="mr-1" /> Acumulado
+                <TrendingUp size={12} className="mr-1" /> {getFilterLabel()}
               </span>
             </div>
             <div className="p-2 bg-indigo-50 rounded-lg text-indigo-600">
@@ -215,8 +281,8 @@ const Dashboard: React.FC = () => {
         <div className="bg-white p-6 rounded-xl shadow-sm border border-slate-100">
           <h3 className="text-lg font-semibold text-slate-800 mb-4">Origem do Lucro</h3>
           <div className="h-64 flex items-center justify-center">
-            {transactions.length === 0 ? (
-              <div className="text-slate-400 text-sm">Realize a primeira venda para visualizar os gráficos.</div>
+            {filteredTransactions.length === 0 ? (
+              <div className="text-slate-400 text-sm">Sem dados para este período.</div>
             ) : (
               <>
                 <ResponsiveContainer width="100%" height="100%">
@@ -257,10 +323,10 @@ const Dashboard: React.FC = () => {
 
         {/* Weekly Revenue */}
         <div className="bg-white p-6 rounded-xl shadow-sm border border-slate-100">
-          <h3 className="text-lg font-semibold text-slate-800 mb-4">Vendas Recentes</h3>
+          <h3 className="text-lg font-semibold text-slate-800 mb-4">Vendas (Linha do Tempo)</h3>
           <div className="h-64 flex items-center justify-center">
-            {transactions.length === 0 ? (
-              <div className="text-slate-400 text-sm">Nenhuma venda registrada ainda.</div>
+            {revenueData.length === 0 ? (
+              <div className="text-slate-400 text-sm">Sem dados para este período.</div>
             ) : (
               <ResponsiveContainer width="100%" height="100%">
                 <BarChart data={revenueData}>
@@ -276,29 +342,7 @@ const Dashboard: React.FC = () => {
         </div>
       </div>
 
-      {/* Quick Actions / Suggestions */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-        <div className="bg-gradient-to-br from-indigo-500 to-indigo-700 p-6 rounded-xl text-white">
-          <h4 className="font-bold text-lg mb-2">Setup Inicial</h4>
-          <p className="text-indigo-100 text-sm mb-4">O sistema está limpo e pronto.</p>
-          <div className="bg-white/10 p-3 rounded-lg backdrop-blur-sm mb-2">
-            <span className="block font-semibold">1. Cadastre Produtos</span>
-            <span className="block text-sm opacity-80">Vá em "Estoque" para adicionar iPhones.</span>
-          </div>
-        </div>
-
-        <div className="bg-white border border-slate-200 p-6 rounded-xl">
-          <h4 className="font-bold text-slate-800 mb-2 flex items-center"><Wrench className="text-blue-500 mr-2" size={18} /> Serviços</h4>
-          <p className="text-sm text-slate-500 mb-4">Preços de Telas (iPhone 11-16) e baterias já estão pré-carregados para o POS.</p>
-        </div>
-
-        <div className="bg-white border border-slate-200 p-6 rounded-xl">
-          <h4 className="font-bold text-slate-800 mb-2 flex items-center"><Zap className="text-yellow-500 mr-2" size={18} /> Dica</h4>
-          <p className="text-sm text-slate-500">
-            Use a calculadora de margem no PDV para garantir lucro saudável em cada negociação.
-          </p>
-        </div>
-      </div>
+      {/* Suggested Actions Removed for brevity - kept in old version if needed, or simplified */}
     </div>
   );
 };

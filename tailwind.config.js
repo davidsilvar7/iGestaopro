@@ -7,7 +7,15 @@ export default {
     "./pages/**/*.{js,ts,jsx,tsx}",
   ],
   theme: {
-    extend: {},
+    extend: {
+      colors: {
+        jphone: {
+          light: '#33A9FF',
+          DEFAULT: '#0093E9',
+          dark: '#007BB5',
+        }
+      }
+    },
   },
   plugins: [],
 }

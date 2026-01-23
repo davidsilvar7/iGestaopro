@@ -37,11 +37,19 @@ const Reports: React.FC = () => {
     const salesByDate = useMemo(() => {
         const data: Record<string, number> = {};
         transactions.forEach(t => {
-            const dateStr = new Date(t.date).toLocaleDateString('pt-BR');
-            data[dateStr] = (data[dateStr] || 0) + t.totalAmount;
+            // Store as YYYY-MM-DD for sorting, display format can be handled in Chart
+            const dateObj = new Date(t.date);
+            const dateKey = dateObj.toISOString().split('T')[0];
+            data[dateKey] = (data[dateKey] || 0) + t.totalAmount;
         });
-        // Fill at least some empty days to look like a chart if empty? No, just show real data.
-        return Object.entries(data).map(([date, total]) => ({ date, total }));
+
+        return Object.entries(data)
+            .map(([date, total]) => ({
+                date, // YYYY-MM-DD
+                displayDate: new Date(date).toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' }),
+                total
+            }))
+            .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
     }, [transactions]);
 
     if (loading) return <div className="p-8 text-center text-slate-500">Gerando relatórios...</div>;
@@ -112,7 +120,7 @@ const Reports: React.FC = () => {
                             <ResponsiveContainer width="100%" height="100%">
                                 <BarChart data={salesByDate}>
                                     <CartesianGrid strokeDasharray="3 3" vertical={false} />
-                                    <XAxis dataKey="date" tick={{ fontSize: 12 }} />
+                                    <XAxis dataKey="displayDate" tick={{ fontSize: 12 }} />
                                     <YAxis tick={{ fontSize: 12 }} />
                                     <Tooltip cursor={{ fill: '#f1f5f9' }} formatter={(value: number) => [`R$ ${value.toFixed(2)}`, 'Vendas']} />
                                     <Bar dataKey="total" fill="#3b82f6" radius={[4, 4, 0, 0]} barSize={40} />

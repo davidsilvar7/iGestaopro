@@ -192,7 +192,8 @@ const Inventory: React.FC = () => {
       storage: newItem.storage,
       serviceType: newItem.serviceType as any,
       serviceSubtype: newItem.serviceSubtype,
-      observation: newItem.observation
+      observation: newItem.observation,
+      imei: newItem.imei
     };
 
     const savedItem = await createInventoryItem(itemToSave);
@@ -210,7 +211,8 @@ const Inventory: React.FC = () => {
         sellPrice: 0,
         quantity: 1,
         condition: DeviceCondition.USED_LIKE_NEW,
-        observation: ''
+        observation: '',
+        imei: ''
       });
       setErrors({});
     } else {
@@ -639,7 +641,18 @@ const Inventory: React.FC = () => {
                   )}
 
                   {/* Observation Field (Common) */}
-                  <div className="col-span-2">
+                  <div className="col-span-1">
+                    <label className="block text-xs font-bold text-slate-500 uppercase mb-1">IMEI (Opcional)</label>
+                    <input
+                      type="text"
+                      placeholder="Ex: 356491..."
+                      className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none"
+                      value={newItem.imei || ''}
+                      onChange={e => handleNewItemChange('imei', e.target.value)}
+                    />
+                  </div>
+
+                  <div className="col-span-1">
                     <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Observações (Livre)</label>
                     <input
                       type="text"
