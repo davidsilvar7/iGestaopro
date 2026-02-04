@@ -15,6 +15,7 @@ const ServiceDesk: React.FC = () => {
   // Form State
   const [newOS, setNewOS] = useState({
     customerName: '',
+    customerPhone: '',
     deviceModel: '',
     problemDescription: '',
     checklist: {
@@ -73,6 +74,7 @@ const ServiceDesk: React.FC = () => {
 
     const orderData: Omit<ServiceOrder, 'id'> = {
       customerName: newOS.customerName,
+      customerPhone: newOS.customerPhone,
       deviceModel: newOS.deviceModel,
       problemDescription: newOS.problemDescription,
       status: OSStatus.PENDING,
@@ -89,6 +91,7 @@ const ServiceDesk: React.FC = () => {
       // Reset Form
       setNewOS({
         customerName: '',
+        customerPhone: '',
         deviceModel: '',
         problemDescription: '',
         checklist: {
@@ -246,6 +249,19 @@ const ServiceDesk: React.FC = () => {
 
                 <div>
                   <label className="block text-sm font-medium text-slate-700 mb-1 flex items-center">
+                    <MessageCircle size={14} className="mr-1" /> WhatsApp / Telefone
+                  </label>
+                  <input
+                    type="text"
+                    className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none bg-white text-slate-900"
+                    placeholder="Ex: 11999999999"
+                    value={newOS.customerPhone}
+                    onChange={e => setNewOS({ ...newOS, customerPhone: e.target.value })}
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-slate-700 mb-1 flex items-center">
                     <Smartphone size={14} className="mr-1" /> Modelo do Aparelho
                   </label>
                   <input
@@ -351,6 +367,7 @@ const ServiceDesk: React.FC = () => {
                 </div>
                 <div className="mt-3 text-xs text-slate-400">
                   <p>Cliente: <span className="text-slate-600 font-semibold">{selectedOS.customerName}</span></p>
+                  {selectedOS.customerPhone && <p>Telefone: <span className="text-slate-600">{selectedOS.customerPhone}</span></p>}
                   <p>Entrada: <span className="text-slate-600">{new Date(selectedOS.entryDate).toLocaleDateString('pt-BR')}</span></p>
                 </div>
               </div>
@@ -380,7 +397,9 @@ const ServiceDesk: React.FC = () => {
                 <button
                   onClick={() => {
                     const text = `Olá ${selectedOS.customerName}, o status do seu ${selectedOS.deviceModel} mudou para: ${selectedOS.status}.`;
-                    window.open(`https://api.whatsapp.com/send?text=${encodeURIComponent(text)}`, '_blank');
+                    // Use customer phone if available, removing non-digits
+                    const phone = selectedOS.customerPhone ? selectedOS.customerPhone.replace(/\D/g, '') : '';
+                    window.open(`https://api.whatsapp.com/send?phone=${phone}&text=${encodeURIComponent(text)}`, '_blank');
                   }}
                   className="w-full mt-4 py-3 bg-green-500 hover:bg-green-600 text-white rounded-xl font-bold flex items-center justify-center transition-colors shadow-sm"
                 >

@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
-import { fetchInventory, createInventoryItem, updateInventoryItem } from '../services/dataService';
+import { fetchInventory, createInventoryItem, updateInventoryItem, deleteInventoryItem } from '../services/dataService';
 import { ItemCategory, InventoryItem, DeviceCondition } from '../types';
-import { Search, Plus, Filter, ChevronDown, ChevronUp, Smartphone, Zap, Package, DollarSign, X, Save, TrendingUp, AlertCircle } from 'lucide-react';
+import { Search, Plus, Filter, ChevronDown, ChevronUp, Smartphone, Zap, Package, DollarSign, X, Save, TrendingUp, AlertCircle, Trash2 } from 'lucide-react';
 
 // Constantes atualizadas conforme solicitação
 const IPHONE_MODELS = [
@@ -118,6 +118,18 @@ const Inventory: React.FC = () => {
 
     // Update in Supabase
     await updateInventoryItem(id, { quantity: safeValue });
+  };
+
+  const handleDelete = async (id: string, e: React.MouseEvent) => {
+    e.stopPropagation(); // Prevent row expansion
+    if (window.confirm('Tem certeza que deseja excluir este item do estoque? Esta ação não pode ser desfeita.')) {
+      const success = await deleteInventoryItem(id);
+      if (success) {
+        setItems(prev => prev.filter(item => item.id !== id));
+      } else {
+        alert('Erro ao excluir item. Tente novamente.');
+      }
+    }
   };
 
   const handleNewItemChange = (field: keyof InventoryItem, value: any) => {
@@ -385,7 +397,16 @@ const Inventory: React.FC = () => {
                           </div>
                         </td>
                         <td className="px-6 py-4 text-center text-slate-400">
-                          {expandedId === item.id ? <ChevronUp size={20} /> : <ChevronDown size={20} />}
+                          <div className="flex items-center justify-center gap-3">
+                            <button
+                              onClick={(e) => handleDelete(item.id, e)}
+                              className="p-2 text-slate-400 hover:text-red-500 hover:bg-red-50 rounded-lg transition-colors"
+                              title="Excluir item"
+                            >
+                              <Trash2 size={18} />
+                            </button>
+                            {expandedId === item.id ? <ChevronUp size={20} /> : <ChevronDown size={20} />}
+                          </div>
                         </td>
                       </tr>
 

@@ -17,7 +17,8 @@ export enum DeviceCondition {
   NEW = 'Novo',
   USED_LIKE_NEW = 'Seminovo (Impecável)',
   USED_GOOD = 'Seminovo (Marcas de Uso)',
-  USED_FAIR = 'Seminovo (Vitrine)'
+  USED_FAIR = 'Seminovo (Vitrine)',
+  TRADE_IN = 'Usado/Troca'
 }
 
 export interface InventoryItem {
@@ -54,6 +55,8 @@ export interface Transaction {
   totalAmount: number;
   totalCost: number;
   totalProfit: number;
+  tradeInItems?: InventoryItem[];
+  tradeInTotal?: number;
 }
 
 // Mantendo compatibilidade com OS antiga mas simplificando
@@ -67,6 +70,7 @@ export enum OSStatus {
 export interface ServiceOrder {
   id: string;
   customerName: string;
+  customerPhone?: string; // WhatsApp/Contact
   deviceModel: string;
   problemDescription: string;
   status: OSStatus;

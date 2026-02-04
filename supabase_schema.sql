@@ -29,6 +29,8 @@ create table transactions (
   total_amount numeric default 0,
   total_cost numeric default 0,
   total_profit numeric default 0,
+  trade_in_items jsonb,
+  trade_in_amount numeric default 0,
   items jsonb, -- Armazena os itens da transação como JSON
   created_at timestamp with time zone default timezone('utc'::text, now()) not null
 );
@@ -128,3 +130,19 @@ alter table campaign_targets enable row level security;
 
 create policy "Enable access to all users" on campaigns for all using (true);
 create policy "Enable access to all users" on campaign_targets for all using (true);
+
+-- 8. Trade-In Simulations
+create table trade_in_simulations (
+  id uuid default uuid_generate_v4() primary key,
+  new_device_model text,
+  new_device_price numeric,
+  used_device_model text,
+  used_device_details jsonb, -- Stores capacity, grade, defects, etc.
+  market_value numeric,
+  offer_value numeric,
+  difference numeric,
+  created_at timestamp with time zone default timezone('utc'::text, now()) not null
+);
+
+alter table trade_in_simulations enable row level security;
+create policy "Enable access to all users" on trade_in_simulations for all using (true);

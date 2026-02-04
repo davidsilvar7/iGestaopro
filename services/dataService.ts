@@ -1,6 +1,6 @@
 
 import { supabase } from './supabase';
-import { InventoryItem, Transaction, ServiceOrder, Expense, Campaign, CampaignTarget, Customer } from '../types';
+import { InventoryItem, Transaction, ServiceOrder, Expense, Campaign, CampaignTarget, Customer, ItemCategory, DeviceCondition } from '../types';
 
 // --- ADAPTERS (CamelCase <-> SnakeCase) ---
 
@@ -41,15 +41,62 @@ const toDbInventory = (item: Partial<InventoryItem>) => {
     return payload;
 };
 
-const fromDbTransaction = (dbItem: any): Transaction => ({
-    id: dbItem.id,
-    type: dbItem.type,
-    date: dbItem.date,
-    items: dbItem.items ? dbItem.items.map(fromDbInventory) : [], // Recursive mapping if items are stored as JSON
-    totalAmount: Number(dbItem.total_amount),
-    totalCost: Number(dbItem.total_cost),
-    totalProfit: Number(dbItem.total_profit)
-});
+const fromDbTransaction = (dbItem: any): Transaction => {
+    // Handle both full schema (legacy/complex) and simplified SQL schema
+    const totalAmount = Number(dbItem.total_amount || dbItem.amount || 0);
+    const totalCost = Number(dbItem.total_cost || 0);
+    const tradeInTotal = Number(dbItem.trade_in_amount || 0);
+    const totalProfit = Number(dbItem.total_profit || (totalAmount - totalCost - tradeInTotal));
+    const date = dbItem.date || dbItem.created_at || new Date().toISOString();
+
+    // Map SQL types to App Enums if necessary
+    let txType: 'SALE' | 'SERVICE' | 'EXPENSE' = 'SALE';
+    if (dbItem.type === 'servico') txType = 'SERVICE';
+    if (dbItem.type === 'venda') txType = 'SALE';
+    if (dbItem.type === 'acessorio') txType = 'SALE'; // Treat accessory as Sale for now
+    if (dbItem.type === 'SALE' || dbItem.type === 'SERVICE' || dbItem.type === 'EXPENSE') txType = dbItem.type;
+
+    // If items are missing (simple schema), create a synthetic item so charts don't break
+    let items: InventoryItem[] = [];
+    if (dbItem.items && Array.isArray(dbItem.items)) {
+        items = dbItem.items.map(fromDbInventory);
+    } else {
+        // Synthetic item for simple transactions
+        let category = ItemCategory.IPHONE;
+        if (dbItem.type === 'servico') category = ItemCategory.SERVICE;
+        if (dbItem.type === 'acessorio') category = ItemCategory.ACCESSORY;
+        if (dbItem.type === 'venda' && dbItem.description && dbItem.description.toLowerCase().includes('android')) category = ItemCategory.ANDROID;
+
+        items = [{
+            id: 'synthetic-' + dbItem.id,
+            category: category,
+            name: dbItem.description || 'Venda Diversa',
+            sku: 'SYN-' + (dbItem.id ? dbItem.id.substring(0, 8) : '000'),
+            costPrice: 0,
+            sellPrice: totalAmount,
+            quantity: 1,
+            minStockLevel: 0,
+            storage: '',
+            color: '',
+            condition: DeviceCondition.NEW,
+            imei: '',
+            observation: 'Gerado automaticamente do histórico simplificado',
+            serviceType: dbItem.type === 'servico' ? 'OUTROS' : undefined
+        }];
+    }
+
+    return {
+        id: dbItem.id,
+        type: txType,
+        date: date,
+        items: items,
+        totalAmount: totalAmount,
+        totalCost: totalCost,
+        totalProfit: totalProfit,
+        tradeInItems: dbItem.trade_in_items ? dbItem.trade_in_items.map(fromDbInventory) : [],
+        tradeInTotal: tradeInTotal
+    };
+};
 
 const toDbTransaction = (trx: Partial<Transaction>) => {
     const payload: any = {};
@@ -59,12 +106,15 @@ const toDbTransaction = (trx: Partial<Transaction>) => {
     if (trx.totalCost !== undefined) payload.total_cost = trx.totalCost;
     if (trx.totalProfit !== undefined) payload.total_profit = trx.totalProfit;
     if (trx.items !== undefined) payload.items = trx.items.map(i => toDbInventory(i));
+    if (trx.tradeInItems !== undefined) payload.trade_in_items = trx.tradeInItems.map(i => toDbInventory(i));
+    if (trx.tradeInTotal !== undefined) payload.trade_in_amount = trx.tradeInTotal;
     return payload;
 };
 
 const fromDbServiceOrder = (dbItem: any): ServiceOrder => ({
     id: dbItem.id,
     customerName: dbItem.customer_name,
+    customerPhone: dbItem.customer_phone,
     deviceModel: dbItem.device_model,
     problemDescription: dbItem.problem_description,
     status: dbItem.status,
@@ -76,6 +126,7 @@ const fromDbServiceOrder = (dbItem: any): ServiceOrder => ({
 const toDbServiceOrder = (order: Partial<ServiceOrder>) => {
     const payload: any = {};
     if (order.customerName !== undefined) payload.customer_name = order.customerName;
+    if (order.customerPhone !== undefined) payload.customer_phone = order.customerPhone;
     if (order.deviceModel !== undefined) payload.device_model = order.deviceModel;
     if (order.problemDescription !== undefined) payload.problem_description = order.problemDescription;
     if (order.status !== undefined) payload.status = order.status;
@@ -147,16 +198,21 @@ export const deleteInventoryItem = async (id: string): Promise<boolean> => {
 // --- Transactions Operations ---
 
 export const fetchTransactions = async (): Promise<Transaction[]> => {
+    // Removed .order('date') because the SQL schema might use 'created_at' causing this to fail silently
     const { data, error } = await supabase
         .from('transactions')
-        .select('*')
-        .order('date', { ascending: false });
+        .select('*');
 
     if (error) {
         console.error('Error fetching transactions:', error);
         return [];
     }
-    return data.map(fromDbTransaction);
+
+    // Map first, then sort in JS to be safe
+    const mapped = data.map(fromDbTransaction);
+
+    // safe sort (descending)
+    return mapped.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
 };
 
 export const createTransaction = async (transaction: Omit<Transaction, 'id'>): Promise<Transaction | null> => {
@@ -174,14 +230,32 @@ export const createTransaction = async (transaction: Omit<Transaction, 'id'>): P
     return fromDbTransaction(data);
 };
 
-export const processSale = async (transaction: Omit<Transaction, 'id'>, itemsToDeduct: InventoryItem[]): Promise<boolean> => {
-    // 1. Create Transaction
-    const newTransaction = await createTransaction(transaction);
-
-    if (!newTransaction) {
-        console.error("Failed to create transaction");
-        return false;
+export const processSale = async (transaction: Omit<Transaction, 'id'>, itemsToDeduct: InventoryItem[], tradeInItems: InventoryItem[] = []): Promise<{ success: boolean; error?: string }> => {
+    // 0. Process Trade-ins (Create Inventory Items)
+    if (tradeInItems.length > 0) {
+        const tradeInPromises = tradeInItems.map(item => {
+            // Remove ID if it's temporary/random to let DB generate one
+            const { id, ...itemData } = item;
+            return createInventoryItem(itemData);
+        });
+        const results = await Promise.all(tradeInPromises);
+        // Optional: Check if any failed, but we'll proceed for now or log it
     }
+
+    // 1. Create Transaction
+    const payload = toDbTransaction(transaction);
+    const { data, error } = await supabase
+        .from('transactions')
+        .insert([payload])
+        .select()
+        .single();
+
+    if (error) {
+        console.error("Failed to create transaction:", error);
+        return { success: false, error: error.message || JSON.stringify(error) };
+    }
+
+    const newTransaction = fromDbTransaction(data);
 
     // 2. Update Inventory Quantities
     const updates = itemsToDeduct.map(async (item) => {
@@ -198,7 +272,7 @@ export const processSale = async (transaction: Omit<Transaction, 'id'>, itemsToD
     });
 
     await Promise.all(updates);
-    return true;
+    return { success: true };
 };
 
 // --- Service Orders Operations ---

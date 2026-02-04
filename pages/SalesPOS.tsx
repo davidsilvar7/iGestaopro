@@ -1,20 +1,23 @@
 import React, { useState, useEffect } from 'react';
-import { fetchInventory, createTransaction, processSale } from '../services/dataService';
-import { InventoryItem, ItemCategory, ServiceSubtype, Transaction } from '../types';
-import { Search, ShoppingCart, Calculator, AlertTriangle, Lock, Monitor, Battery, Zap, Smartphone, Plus, Wrench, AlertCircle, CheckCircle2, Edit2 } from 'lucide-react';
+import { fetchInventory, createTransaction, processSale, fetchTransactions } from '../services/dataService';
+import { InventoryItem, ItemCategory, ServiceSubtype, Transaction, DeviceCondition } from '../types';
+import { Search, ShoppingCart, Calculator, AlertTriangle, Lock, Monitor, Battery, Zap, Smartphone, Plus, Wrench, AlertCircle, CheckCircle2, Edit2, History, Repeat } from 'lucide-react';
+import FeeCalculator from '../components/FeeCalculator';
 
 interface CartItem extends InventoryItem {
   cartId: string;
 }
 
 // Quick entry modes
-type POSMode = 'STOCK' | 'QUICK_SERVICE' | 'QUICK_ACCESSORY';
+type POSMode = 'STOCK' | 'QUICK_SERVICE' | 'QUICK_ACCESSORY' | 'HISTORY';
 
 const SalesPOS: React.FC = () => {
   const [stock, setStock] = useState<InventoryItem[]>([]);
   const [cart, setCart] = useState<CartItem[]>([]);
   const [mode, setMode] = useState<POSMode>('STOCK');
   const [searchTerm, setSearchTerm] = useState('');
+  const [salesHistory, setSalesHistory] = useState<Transaction[]>([]);
+  const [loadingHistory, setLoadingHistory] = useState(false);
 
   // Quick Service/Accessory Form State
   const [quickForm, setQuickForm] = useState({
@@ -36,9 +39,17 @@ const SalesPOS: React.FC = () => {
   const [calculatedMarginPct, setCalculatedMarginPct] = useState(0);
   const [requiresAuth, setRequiresAuth] = useState(false);
   const [checkoutSuccess, setCheckoutSuccess] = useState(false);
+  // Trade-in State
+  const [tradeInItems, setTradeInItems] = useState<InventoryItem[]>([]);
+  const [showTradeInModal, setShowTradeInModal] = useState(false);
+  const [tradeInForm, setTradeInForm] = useState({ name: '', value: '', sellPrice: '', storage: '', color: '', imei: '', condition: 'Seminovo (Marcas de Uso)' });
+
+  // Fee Calculator State
+  const [showFeeCalculator, setShowFeeCalculator] = useState(false);
 
   // Totais baseados no carrinho (que agora tem preços editáveis)
   const subtotal = cart.reduce((acc, item) => acc + item.sellPrice, 0);
+  const tradeInTotal = tradeInItems.reduce((acc, item) => acc + item.costPrice, 0);
   const totalCost = cart.reduce((acc, item) => acc + item.costPrice, 0);
 
   useEffect(() => {
@@ -58,11 +69,18 @@ const SalesPOS: React.FC = () => {
       return;
     }
 
-    const netSale = subtotal - discountValue;
-    const operationalCosts = netSale * (fixedCostsPct / 100);
+    // Correct Profit Calculation: Trade-in is NOT a loss, it's a payment method (Asset Acquisition).
+    // Revenue = Sell Price - Discounts.
+    const accountingRevenue = subtotal - discountValue;
+
+    // Operational Cost (e.g. Taxes/Commission) usually applies to the full sale amount, not just cash.
+    const operationalCosts = accountingRevenue * (fixedCostsPct / 100);
+
     const finalCost = totalCost + operationalCosts;
-    const profit = netSale - finalCost;
-    const marginPct = netSale > 0 ? (profit / netSale) * 100 : 0;
+    const profit = accountingRevenue - finalCost;
+
+    // Margin %
+    const marginPct = accountingRevenue > 0 ? (profit / accountingRevenue) * 100 : 0;
 
     setCalculatedProfit(profit);
     setCalculatedMarginPct(marginPct);
@@ -179,13 +197,16 @@ const SalesPOS: React.FC = () => {
       type: 'SALE',
       date: new Date().toISOString(),
       items: cart,
-      totalAmount: subtotal - discountValue,
+      tradeInItems: tradeInItems,
+      tradeInTotal: tradeInTotal,
+      totalAmount: subtotal - discountValue - tradeInTotal,
       totalCost: totalCost,
       totalProfit: calculatedProfit
     };
 
     // 2. Save to "Database" (Supabase) via Process Sale (handles stock deduction)
-    const success = await processSale(transactionData, cart);
+    // 2. Save to "Database" (Supabase) via Process Sale (handles stock deduction)
+    const { success, error } = await processSale(transactionData, cart, tradeInItems);
 
     if (success) {
       // 3. UI Feedback
@@ -198,10 +219,11 @@ const SalesPOS: React.FC = () => {
       setTimeout(() => {
         setCheckoutSuccess(false);
         setCart([]);
+        setTradeInItems([]);
         setDiscountValue(0);
       }, 2000);
     } else {
-      alert("Erro ao processar venda. Tente novamente.");
+      alert(`Erro ao processar venda: ${error || 'Erro desconhecido'}`);
     }
   };
 
@@ -250,6 +272,12 @@ const SalesPOS: React.FC = () => {
             className={`flex-1 py-4 font-medium text-sm flex items-center justify-center ${mode === 'QUICK_ACCESSORY' ? 'text-orange-600 border-b-2 border-orange-600 bg-orange-50/50' : 'text-slate-500 hover:bg-slate-50'}`}
           >
             <Zap size={16} className="mr-2" /> Acessório Avulso
+          </button>
+          <button
+            onClick={() => { setMode('HISTORY'); setFormErrors({}); }}
+            className={`flex-1 py-4 font-medium text-sm flex items-center justify-center ${mode === 'HISTORY' ? 'text-slate-800 border-b-2 border-slate-800 bg-slate-100' : 'text-slate-500 hover:bg-slate-50'}`}
+          >
+            <History size={16} className="mr-2" /> Histórico
           </button>
         </div>
 
@@ -488,13 +516,194 @@ const SalesPOS: React.FC = () => {
               </div>
             ))
           )}
+          {/* Trade-in Items List */}
+          {tradeInItems.length > 0 && (
+            <div className="mt-4 pt-4 border-t border-slate-100">
+              <h3 className="text-xs font-bold text-slate-400 uppercase mb-2 ml-1">Entrada / Troca</h3>
+              {tradeInItems.map((item) => (
+                <div key={item.id} className="flex justify-between items-center p-3 bg-green-50 rounded-lg border border-green-100 mb-2">
+                  <div className="flex-1 min-w-0 mr-2">
+                    <div className="flex items-center">
+                      <Repeat size={12} className="mr-1 text-green-600" />
+                      <p className="font-medium text-green-800 truncate text-sm">{item.name}</p>
+                    </div>
+                    <p className="text-xs text-green-600">{item.sku}</p>
+                  </div>
+                  <div className="text-right">
+                    <span className="block font-bold text-green-700 text-sm">- R$ {item.costPrice.toFixed(2)}</span>
+                    <button
+                      onClick={() => setTradeInItems(tradeInItems.filter(i => i.id !== item.id))}
+                      className="text-green-400 hover:text-green-600 text-xs underline mt-1"
+                    >
+                      Remover
+                    </button>
+                  </div>
+                </div>
+              ))}
+              <div className="flex justify-between items-center px-2 py-1">
+                <span className="text-sm font-bold text-green-600">Total Abatido:</span>
+                <span className="text-sm font-bold text-green-600">- R$ {tradeInTotal.toFixed(2)}</span>
+              </div>
+            </div>
+          )}
+
+          {/* Add Trade-in Button */}
+          <button
+            onClick={() => setShowTradeInModal(true)}
+            className="w-full mt-2 py-3 border-2 border-dashed border-slate-200 rounded-xl text-slate-400 font-bold text-sm hover:border-green-300 hover:text-green-600 hover:bg-green-50 transition-all flex items-center justify-center"
+          >
+            <Repeat size={16} className="mr-2" /> Adicionar Troca
+          </button>
         </div>
+
+        {/* Trade-in Modal */}
+        {showTradeInModal && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm">
+            <div className="bg-white p-6 rounded-2xl w-full max-w-md shadow-2xl animate-in zoom-in-95">
+              <h3 className="text-lg font-bold text-slate-800 mb-1">Adicionar Troca</h3>
+              <p className="text-sm text-slate-500 mb-4">Insira os dados do aparelho entrando como parte do pagamento.</p>
+
+              <div className="space-y-4">
+                {/* Row 1: Model, Evaluation, Resale */}
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                  <div className="col-span-1 md:col-span-3">
+                    <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Modelo / Aparelho</label>
+                    <input
+                      autoFocus
+                      className="w-full px-4 py-3 border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none"
+                      placeholder="Ex: iPhone XR"
+                      value={tradeInForm.name}
+                      onChange={e => setTradeInForm({ ...tradeInForm, name: e.target.value })}
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Valor Avaliado (Custo)</label>
+                    <input
+                      type="number"
+                      className="w-full px-4 py-3 border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none font-bold text-slate-800"
+                      placeholder="0.00"
+                      value={tradeInForm.value}
+                      onChange={e => setTradeInForm({ ...tradeInForm, value: e.target.value })}
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Preço Revenda (Sugerido)</label>
+                    <input
+                      type="number"
+                      className="w-full px-4 py-3 border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none font-bold text-green-600"
+                      placeholder="0.00"
+                      value={tradeInForm.sellPrice}
+                      onChange={e => setTradeInForm({ ...tradeInForm, sellPrice: e.target.value })}
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Capacidade</label>
+                    <select
+                      className="w-full px-4 py-3 border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none bg-white"
+                      value={tradeInForm.storage}
+                      onChange={e => setTradeInForm({ ...tradeInForm, storage: e.target.value })}
+                    >
+                      <option value="">Selecione...</option>
+                      {['64GB', '128GB', '256GB', '512GB', '1TB'].map(s => <option key={s} value={s}>{s}</option>)}
+                    </select>
+                  </div>
+                </div>
+
+                {/* Row 2: Details */}
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Cor</label>
+                    <input
+                      className="w-full px-4 py-3 border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none"
+                      placeholder="Ex: Preto"
+                      value={tradeInForm.color}
+                      onChange={e => setTradeInForm({ ...tradeInForm, color: e.target.value })}
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Condição</label>
+                    <select
+                      className="w-full px-4 py-3 border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none bg-white"
+                      value={tradeInForm.condition}
+                      onChange={e => setTradeInForm({ ...tradeInForm, condition: e.target.value })}
+                    >
+                      <option value={DeviceCondition.USED_GOOD}>Usado (Marcas)</option>
+                      <option value={DeviceCondition.USED_LIKE_NEW}>Seminovo (Impecável)</option>
+                      <option value={DeviceCondition.USED_FAIR}>Usado (Vitrine)</option>
+                      <option value={DeviceCondition.TRADE_IN}>Para Retirada/Sucata</option>
+                    </select>
+                  </div>
+                </div>
+
+                <div>
+                  <label className="block text-xs font-bold text-slate-500 uppercase mb-1">IMEI (Opcional)</label>
+                  <input
+                    className="w-full px-4 py-3 border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none font-mono text-sm"
+                    placeholder="00000000000000"
+                    value={tradeInForm.imei}
+                    onChange={e => setTradeInForm({ ...tradeInForm, imei: e.target.value })}
+                  />
+                </div>
+
+                <div className="pt-2 flex gap-3">
+                  <button
+                    onClick={() => setShowTradeInModal(false)}
+                    className="flex-1 py-3 text-slate-500 font-bold hover:bg-slate-50 rounded-xl transition-colors border border-transparent hover:border-slate-200"
+                  >
+                    Cancelar
+                  </button>
+                  <button
+                    onClick={() => {
+                      const val = parseFloat(tradeInForm.value);
+                      const sell = parseFloat(tradeInForm.sellPrice);
+
+                      if (!tradeInForm.name || isNaN(val) || val <= 0) {
+                        alert("Preencha o modelo e o valor de avaliação (custo) corretamente.");
+                        return;
+                      }
+
+                      const newItem: InventoryItem = {
+                        id: `trade-${Date.now()}`,
+                        category: ItemCategory.IPHONE,
+                        name: `${tradeInForm.name} ${tradeInForm.storage}`,
+                        sku: `TROCA-${Date.now().toString().slice(-6)}`,
+                        costPrice: val,
+                        sellPrice: isNaN(sell) ? 0 : sell, // Use the entered resale price, or 0
+                        quantity: 1,
+                        condition: tradeInForm.condition as DeviceCondition || DeviceCondition.TRADE_IN,
+                        observation: 'Entrada via Troca (POS)',
+                        storage: tradeInForm.storage,
+                        color: tradeInForm.color,
+                        imei: tradeInForm.imei
+                      };
+                      setTradeInItems([...tradeInItems, newItem]);
+                      setTradeInForm({ name: '', value: '', sellPrice: '', storage: '', color: '', imei: '', condition: DeviceCondition.USED_GOOD });
+                      setShowTradeInModal(false);
+                    }}
+                    className="flex-2 w-2/3 py-3 bg-green-600 text-white font-bold rounded-xl hover:bg-green-700 transition-colors shadow-lg"
+                  >
+                    Confirmar Entrada
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+
+        <FeeCalculator
+          isOpen={showFeeCalculator}
+          onClose={() => setShowFeeCalculator(false)}
+          initialNetValue={subtotal - discountValue - tradeInTotal} // Sugere o valor restante a pagar
+        />
 
         {/* Smart Calculator Section */}
         <div className="p-6 bg-slate-900 text-white rounded-t-2xl shadow-2xl">
           <div className="flex justify-between items-center mb-4">
-            <div className="flex items-center text-slate-300 text-sm">
-              <Calculator size={14} className="mr-1" /> Calculadora Inteligente
+            <div className="flex items-center text-slate-300 text-sm cursor-pointer hover:text-white transition-colors" onClick={() => setShowFeeCalculator(true)}>
+              <Calculator size={14} className="mr-1" /> Calculadora Taxas
             </div>
 
             {/* Editable Fixed Cost */}
@@ -532,7 +741,7 @@ const SalesPOS: React.FC = () => {
             <div className="pt-3 border-t border-slate-700 flex justify-between items-end">
               <div>
                 <span className="text-sm text-slate-400 block">Total Final</span>
-                <span className="text-2xl font-bold">R$ {(subtotal - discountValue).toFixed(2)}</span>
+                <span className="text-2xl font-bold">R$ {(subtotal - discountValue - tradeInTotal).toFixed(2)}</span>
               </div>
             </div>
           </div>

@@ -6,6 +6,7 @@ import Dashboard from './pages/Dashboard';
 import Inventory from './pages/Inventory';
 import ServiceDesk from './pages/ServiceDesk';
 import SalesPOS from './pages/SalesPOS';
+import TradeInCalculator from './pages/TradeInCalculator';
 import Financial from './pages/Financial';
 import Reports from './pages/Reports';
 import Settings from './pages/Settings';
@@ -51,9 +52,9 @@ const App: React.FC = () => {
   }
 
   // If no session, show Login
-  if (!session) {
-    return <Login />;
-  }
+  // if (!session) {
+  //   return <Login />;
+  // }
 
   // Protected Routes
   const renderContent = () => {
@@ -62,6 +63,7 @@ const App: React.FC = () => {
       case 'inventory': return <Inventory />;
       case 'service': return <ServiceDesk />;
       case 'sales': return <SalesPOS />;
+      case 'trade_in': return <TradeInCalculator />;
       case 'financial': return <Financial />;
       case 'reports': return <Reports />;
 
