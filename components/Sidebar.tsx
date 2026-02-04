@@ -1,6 +1,6 @@
 import React from 'react';
 import { supabase } from '../services/supabase';
-import { LayoutDashboard, Smartphone, Wrench, DollarSign, Menu, X, LogOut, PieChart, TrendingUp, Settings, HelpCircle, Target, UserPlus, Users } from 'lucide-react';
+import { LayoutDashboard, Smartphone, Wrench, DollarSign, Menu, X, LogOut, PieChart, TrendingUp, Settings, HelpCircle, Target, UserPlus, Users, RefreshCcw } from 'lucide-react';
 import { Session } from '@supabase/supabase-js';
 
 interface SidebarProps {
@@ -15,6 +15,7 @@ const Sidebar: React.FC<SidebarProps> = ({ activeTab, setActiveTab, isOpen, setI
   const menuItems = [
     { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard },
     { id: 'sales', label: 'Vendas & Caixa', icon: DollarSign },
+    { id: 'trade_in', label: 'Trade-in (Troca)', icon: RefreshCcw },
     { id: 'inventory', label: 'Estoque', icon: Smartphone },
     { id: 'service', label: 'Assistência (OS)', icon: Wrench },
     { id: 'financial', label: 'Financeiro', icon: TrendingUp },
