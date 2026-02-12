@@ -62,6 +62,19 @@ const SalesPOS: React.FC = () => {
   }, []);
 
   useEffect(() => {
+    if (mode === 'HISTORY') {
+      setLoadingHistory(true);
+      fetchTransactions()
+        .then(data => {
+          setSalesHistory(data);
+        })
+        .finally(() => {
+          setLoadingHistory(false);
+        });
+    }
+  }, [mode]);
+
+  useEffect(() => {
     if (cart.length === 0) {
       setMarginStatus('GREEN');
       setCalculatedProfit(0);
@@ -469,6 +482,79 @@ const SalesPOS: React.FC = () => {
                   Adicionar ao Carrinho
                 </button>
               </div>
+            </div>
+          )}
+
+          {/* MODE: HISTORY */}
+          {mode === 'HISTORY' && (
+            <div className="space-y-4 animate-in fade-in">
+              <div className="flex justify-between items-center mb-4">
+                <h2 className="text-xl font-bold text-slate-800">Histórico de Vendas Recentes</h2>
+                <button
+                  onClick={() => { setLoadingHistory(true); fetchTransactions().then(setSalesHistory).finally(() => setLoadingHistory(false)); }}
+                  className="p-2 text-slate-500 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
+                  title="Atualizar"
+                >
+                  <Repeat size={20} />
+                </button>
+              </div>
+
+              {loadingHistory ? (
+                <div className="text-center py-10 text-slate-400">
+                  <p>Carregando histórico...</p>
+                </div>
+              ) : salesHistory.length === 0 ? (
+                <div className="text-center py-10 text-slate-400">
+                  <p>Nenhuma venda registrada.</p>
+                </div>
+              ) : (
+                <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
+                  <table className="w-full text-left">
+                    <thead className="bg-slate-50 border-b border-slate-200">
+                      <tr>
+                        <th className="px-6 py-3 text-xs font-bold text-slate-500 uppercase">Data</th>
+                        <th className="px-6 py-3 text-xs font-bold text-slate-500 uppercase">Tipo</th>
+                        <th className="px-6 py-3 text-xs font-bold text-slate-500 uppercase">Itens</th>
+                        <th className="px-6 py-3 text-xs font-bold text-slate-500 uppercase text-right">Valor</th>
+                        <th className="px-6 py-3 text-xs font-bold text-slate-500 uppercase text-right">Lucro</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-100">
+                      {salesHistory.map((sale) => (
+                        <tr key={sale.id} className="hover:bg-slate-50 transition-colors">
+                          <td className="px-6 py-4 text-sm text-slate-600">
+                            {new Date(sale.date).toLocaleDateString('pt-BR')} <span className="text-xs text-slate-400">{new Date(sale.date).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}</span>
+                          </td>
+                          <td className="px-6 py-4">
+                            <span className={`px-2 py-1 rounded text-xs font-bold ${sale.type === 'SALE' ? 'bg-green-100 text-green-700' :
+                              sale.type === 'SERVICE' ? 'bg-purple-100 text-purple-700' :
+                                'bg-slate-100 text-slate-700'
+                              }`}>
+                              {sale.type === 'SALE' ? 'VENDA' : sale.type === 'SERVICE' ? 'SERVIÇO' : sale.type}
+                            </span>
+                          </td>
+                          <td className="px-6 py-4 text-sm text-slate-700">
+                            {sale.items.length > 0 ? (
+                              <div className="flex flex-col">
+                                <span className="font-medium">{sale.items[0].name}</span>
+                                {sale.items.length > 1 && <span className="text-xs text-slate-400">+{sale.items.length - 1} outros</span>}
+                              </div>
+                            ) : (
+                              <span className="text-slate-400 italic">Sem itens</span>
+                            )}
+                          </td>
+                          <td className="px-6 py-4 text-sm font-bold text-slate-800 text-right">
+                            R$ {sale.totalAmount.toFixed(2)}
+                          </td>
+                          <td className="px-6 py-4 text-sm font-bold text-green-600 text-right">
+                            R$ {sale.totalProfit.toFixed(2)}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
             </div>
           )}
 

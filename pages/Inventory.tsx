@@ -79,7 +79,8 @@ const Inventory: React.FC = () => {
     const term = searchTerm.toLowerCase();
     const matchesSearch =
       item.name.toLowerCase().includes(term) ||
-      item.sku.toLowerCase().includes(term);
+      item.sku.toLowerCase().includes(term) ||
+      (item.imei && item.imei.toLowerCase().includes(term));
 
     return matchesType && matchesSearch;
   });
@@ -372,6 +373,11 @@ const Inventory: React.FC = () => {
                               <span className="text-xs text-slate-400 italic truncate max-w-[200px]">
                                 Obs: {item.observation}
                               </span>
+                            )}
+                            {item.imei && (
+                              <div className="text-xs text-slate-500 font-mono mt-0.5">
+                                IMEI: <span className="text-slate-800 select-all">{item.imei}</span>
+                              </div>
                             )}
                           </div>
                         </td>

@@ -14,6 +14,8 @@ import {
     ArrowRight
 } from 'lucide-react';
 import { supabase } from '../services/supabase';
+import { fetchInventory } from '../services/dataService';
+import { InventoryItem, ItemCategory } from '../types';
 
 // --- Types & Constants ---
 
@@ -71,14 +73,37 @@ const CONFIG = {
     }
 };
 
-const MOCK_MODELS = [
-    "iPhone 15 Pro Max", "iPhone 15 Pro", "iPhone 15",
-    "iPhone 14 Pro Max", "iPhone 14 Pro", "iPhone 14",
-    "iPhone 13 Pro Max", "iPhone 13", "iPhone 12", "iPhone 11"
+
+
+const CATALOG_MODELS = [
+    // iPhone 16 Series
+    "iPhone 16 Pro Max", "iPhone 16 Pro", "iPhone 16 Plus", "iPhone 16",
+    // iPhone 15 Series
+    "iPhone 15 Pro Max", "iPhone 15 Pro", "iPhone 15 Plus", "iPhone 15",
+    // iPhone 14 Series
+    "iPhone 14 Pro Max", "iPhone 14 Pro", "iPhone 14 Plus", "iPhone 14",
+    // iPhone 13 Series
+    "iPhone 13 Pro Max", "iPhone 13 Pro", "iPhone 13 Mini", "iPhone 13",
+    // iPhone 12 Series
+    "iPhone 12 Pro Max", "iPhone 12 Pro", "iPhone 12 Mini", "iPhone 12",
+    // iPhone 11 Series
+    "iPhone 11 Pro Max", "iPhone 11 Pro", "iPhone 11"
 ];
 
 const TradeInCalculator: React.FC = () => {
     const [state, setState] = useState<TradeInState>(INITIAL_STATE);
+    const [inventoryItems, setInventoryItems] = useState<InventoryItem[]>([]);
+    const [loadingInventory, setLoadingInventory] = useState(false);
+
+    // ... existing code ...
+
+    // Filter catalog models that are NOT in stock
+    const availableModelNames = new Set(inventoryItems.map(i => i.name));
+    const catalogModelsToShow = CATALOG_MODELS.filter(model => !availableModelNames.has(model));
+
+    // ... existing code ...
+
+
     const [results, setResults] = useState({
         purchaseValue: 0, // How much we pay for the used phone
         differenceToPay: 0, // New Device - Purchase Value
@@ -87,6 +112,24 @@ const TradeInCalculator: React.FC = () => {
     const [saving, setSaving] = useState(false);
 
     // --- Calculation Logic ---
+
+    useEffect(() => {
+        loadStock();
+    }, []);
+
+    const loadStock = async () => {
+        setLoadingInventory(true);
+        const data = await fetchInventory();
+        // Filter: Only physical items (iPhones/Androids) with stock > 0
+        const available = data.filter(item =>
+            (item.category === ItemCategory.IPHONE ||
+                item.category === ItemCategory.ANDROID ||
+                item.category === ItemCategory.ANDROID_USED) &&
+            item.quantity > 0
+        );
+        setInventoryItems(available);
+        setLoadingInventory(false);
+    };
 
     useEffect(() => {
         calculateTradeIn();
@@ -229,11 +272,63 @@ const TradeInCalculator: React.FC = () => {
                                 <div className="relative">
                                     <select
                                         className="w-full bg-slate-900 border border-slate-700 rounded-xl px-4 py-3 text-white focus:ring-2 focus:ring-blue-500 outline-none appearance-none"
-                                        value={state.newDeviceModel}
-                                        onChange={(e) => setState({ ...state, newDeviceModel: e.target.value })}
+                                        value={
+                                            // Try to match current model name to an inventory ID, otherwise use the name itself
+                                            inventoryItems.find(i => `${i.name} ${i.storage || ''}`.trim() === state.newDeviceModel)?.id || state.newDeviceModel
+                                        }
+                                        onChange={(e) => {
+                                            const selectedValue = e.target.value;
+                                            // Check if it's an ID (inventory item)
+                                            const item = inventoryItems.find(i => i.id === selectedValue);
+
+                                            if (item) {
+                                                setState({
+                                                    ...state,
+                                                    newDeviceModel: `${item.name} ${item.storage || ''}`.trim(),
+                                                    newDevicePrice: item.sellPrice
+                                                });
+                                            } else {
+                                                // It's a catalog item (name)
+                                                setState({
+                                                    ...state,
+                                                    newDeviceModel: selectedValue,
+                                                    newDevicePrice: 0 // Default to 0 for catalog items
+                                                });
+                                            }
+                                        }}
+                                        disabled={loadingInventory}
                                     >
-                                        <option value="">Selecione um modelo...</option>
-                                        {MOCK_MODELS.map(m => <option key={m} value={m}>{m}</option>)}
+                                        <option value="">
+                                            {loadingInventory ? 'Carregando estoque...' : 'Selecione um modelo...'}
+                                        </option>
+
+                                        <optgroup label="Em Estoque (Pronta Entrega)">
+                                            {inventoryItems
+                                                .filter(i => i.category === ItemCategory.IPHONE)
+                                                .map(item => (
+                                                    <option key={item.id} value={item.id}>
+                                                        {item.name} {item.storage ? `- ${item.storage}` : ''}  (R$ {item.sellPrice.toFixed(0)})
+                                                    </option>
+                                                ))}
+                                        </optgroup>
+
+                                        <optgroup label="Outros em Estoque">
+                                            {inventoryItems
+                                                .filter(i => i.category === ItemCategory.ANDROID || i.category === ItemCategory.ANDROID_USED)
+                                                .map(item => (
+                                                    <option key={item.id} value={item.id}>
+                                                        {item.name} (R$ {item.sellPrice.toFixed(0)})
+                                                    </option>
+                                                ))}
+                                        </optgroup>
+
+                                        <optgroup label="Catálogo (Sob Encomenda)">
+                                            {catalogModelsToShow.map(model => (
+                                                <option key={model} value={model}>
+                                                    {model}
+                                                </option>
+                                            ))}
+                                        </optgroup>
                                     </select>
                                     <div className="absolute right-4 top-1/2 -translate-y-1/2 pointer-events-none text-slate-500">
                                         <Search size={16} />
@@ -316,8 +411,8 @@ const TradeInCalculator: React.FC = () => {
                                             key={gradeOption}
                                             onClick={() => setState({ ...state, grade: gradeOption })}
                                             className={`flex-1 py-3 rounded-xl border-2 font-bold transition-all ${state.grade === gradeOption
-                                                    ? 'bg-purple-500/20 border-purple-500 text-purple-300'
-                                                    : 'bg-slate-900 border-slate-700 text-slate-500 hover:border-slate-600'
+                                                ? 'bg-purple-500/20 border-purple-500 text-purple-300'
+                                                : 'bg-slate-900 border-slate-700 text-slate-500 hover:border-slate-600'
                                                 }`}
                                         >
                                             {gradeOption}
@@ -367,8 +462,8 @@ const TradeInCalculator: React.FC = () => {
                                         <label
                                             key={defect.key}
                                             className={`flex items-center justify-between p-3 rounded-lg border transition-all cursor-pointer ${state.defects[defect.key as keyof typeof state.defects]
-                                                    ? 'bg-orange-500/10 border-orange-500/50'
-                                                    : 'bg-slate-800 border-slate-700 hover:border-slate-600'
+                                                ? 'bg-orange-500/10 border-orange-500/50'
+                                                : 'bg-slate-800 border-slate-700 hover:border-slate-600'
                                                 }`}
                                         >
                                             <span className={`font-medium ${state.defects[defect.key as keyof typeof state.defects] ? 'text-orange-300' : 'text-slate-300'}`}>
